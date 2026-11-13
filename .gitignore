@@ -2,3 +2,4 @@
 certbot/.env
 certbot/dynu-credentials.ini
 certbot/certs/
+*.log
