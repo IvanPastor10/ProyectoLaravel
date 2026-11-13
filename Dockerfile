@@ -1,52 +1,61 @@
-# Utilizamos la  ltima imagen de ubuntu como imagen base
-FROM ubuntu:latest
+# Utilizamos la última imagen de ubuntu como imagen base
+FROM ubuntu:24.04
 
 # Establecemos el timezone
 ENV TZ=Europe/Madrid
 
-# Instalamos los paquetes del sistema necesarios para Laravel
+# 1. Instalamos el comando add-apt-repository y añadimos el PPA de Ondřej Surý
 RUN apt-get update && \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends software-properties-common gnupg2 ca-certificates && \
+    add-apt-repository -y ppa:ondrej/php && \
+    apt-get update
+
+# Instalamos Apache y PHP
+RUN apt-get install -y --no-install-recommends \
         apache2 \
-        php \
-        libapache2-mod-php \
-        php-cli \
-        php-common \
-        php-sqlite3 \
-        php-mysql \
-        php-pgsql \
-        php-gd \
-        php-zip \
-        php-bcmath \
-        php-mbstring \
-        php-xml \
-        php-curl \
-        php-intl \
+        php8.5=8.5.12* \
+        libapache2-mod-php8.5=8.5.12* \
+        php8.5-cli=8.5.12* \
+        php8.5-common=8.5.12* \
+        php8.5-mysql=8.5.12* \
+        php8.5-pgsql=8.5.12* \
+        php8.5-sqlite3=8.5.12* \
+        php8.5-gd=8.5.12* \
+        php8.5-zip=8.5.12* \
+        php8.5-bcmath=8.5.12* \
+        php8.5-mbstring=8.5.12* \
+        php8.5-xml=8.5.12* \
+        php8.5-curl=8.5.12* \
+        php8.5-intl=8.5.12* \
         unzip \
         zip \
         git \
         curl \
         && rm -rf /var/lib/apt/lists/*
-# Habilitamos mod_rewrite de Apache para las rutas de Laravel
+
+# Habilitamos los módulos rewrite y ssl de Apache
 RUN a2enmod rewrite
+RUN a2enmod ssl
 
-
-# Copiamos la configuraci  n personalizada de Apache
+# Copiamos la configuración personalizada de Apache
 COPY ./config/apache2.conf /etc/apache2/apache2.conf
 
-# Desactivamos el m  dulo autoindex
+# Desactivamos el módulo autoindex
 RUN a2dismod -f autoindex
+
+# Copiamos y activamos la configuración del VirtualHost con SSL
+COPY ./config/planifyplus-ssl.conf /etc/apache2/sites-available/planifyplus-ssl.conf
+RUN a2dissite 000-default && a2ensite planifyplus-ssl
 
 # Creamos directorios necesarios con permisos para el usuario de apache
 RUN mkdir -p /var/run/apache2 /var/lock/apache2 /var/log/apache2
 RUN chown -R www-data:www-data \
- /var/run/apache2 /var/lock/apache2 /var/log/apache2
+    /var/run/apache2 /var/lock/apache2 /var/log/apache2
 
-
-# Establecemos el directorio de trabajo en el directorio web ra  z
+# Establecemos el directorio de trabajo en el directorio web raíz
 WORKDIR /var/www/html/
 
-# Copiamos nuestra aplicaci  n al directorio de trabajo del contenedor
+# Copiamos nuestra aplicación al directorio de trabajo del contenedor
 COPY ./app /var/www/html/
 
 # Instalamos Composer
@@ -63,25 +72,22 @@ RUN chown -R www-data:www-data \
     /var/www/html/storage \
     /var/www/html/bootstrap/cache \
     /var/www/html/database && \
-chmod -R 775 \
+    chmod -R 775 \
     /var/www/html/storage \
     /var/www/html/bootstrap/cache \
     /var/www/html/database
 
-
-# Ponemos el puerto 80 del contenedor en escucha
-EXPOSE 80
-
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
-# Establecemos la ra  z web de Apache en el directorio public del proyecto
+# Establecemos la raíz web de Apache en el directorio public del proyecto
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
+# Exponemos los puertos 80 (HTTP) y 443 (HTTPS)
+EXPOSE 80 443
 
 # Cambiamos de root al usuario www-data
 USER www-data
 
 # Levantamos el demonio de Apache
 CMD ["apachectl", "-D", "FOREGROUND"]
-
